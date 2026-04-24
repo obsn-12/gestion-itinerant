@@ -101,6 +101,12 @@ export default function App() {
 const saveWeek = async () => {
   setSaving(true);
   const id = USER_ID + "-" + year + "-W" + week;
+  // Nettoyage du JSON avant sauvegarde (évite les timeouts)
+if (data.receipts && data.receipts.length > 0) {
+  data.receipts = data.receipts.map(r =>
+    typeof r === "string" ? r : r.name || r.url
+  );
+}
 
   // Sauvegarder les données sans les images (trop lourdes)
   const dataWithoutReceipts = { ...data, receipts: [] };
