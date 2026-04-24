@@ -98,13 +98,36 @@ export default function App() {
   const prevWeek = () => week>1 ? changeWeek(week-1,year) : changeWeek(52,year-1);
   const nextWeek = () => week<52 ? changeWeek(week+1,year) : changeWeek(1,year+1);
 
-  const saveWeek = async () => {
-    setSaving(true);
-    const id = USER_ID+"-"+year+"-W"+week;
-    const { error } = await supabase.from("weeks").upsert({ id, user_id: USER_ID, data, updated_at: new Date().toISOString() });
-    setSaving(false);
-    if (error) alert("Erreur sauvegarde : "+error.message);
-    else alert("Semaine S"+week+"/"+year+" sauvegardee !");
+const saveWeek = async () => {
+  setSaving(true);
+  const id = USER_ID + "-" + year + "-W" + week;
+
+  // Sauvegarder les données sans les images (trop lourdes)
+  const dataWithoutReceipts = { ...data, receipts: [] };
+
+  // Sauvegarder les factures séparément
+  const receiptsId = id + "-receipts";
+
+  const [weekRes, receiptRes] = await Promise.all([
+    supabase.from("weeks").upsert({
+      id,
+      user_id: USER_ID,
+      data: dataWithoutReceipts,
+      updated_at: new Date().toISOString()
+    }),
+    supabase.from("weeks").upsert({
+      id: receiptsId,
+      user_id: USER_ID,
+      data: { receipts: data.receipts },
+      updated_at: new Date().toISOString()
+    })
+  ]);
+
+  setSaving(false);
+
+  if (weekRes.error) alert("Erreur sauvegarde : " + weekRes.error.message);
+  else if (receiptRes.error) alert("Données sauvegardées mais erreur factures : " + receiptRes.error.message);
+  else alert("Semaine S" + week + "/" + year + " sauvegardée !");
   };
 
   const dupDay = (idx) => {
@@ -145,12 +168,65 @@ export default function App() {
   const addExp = (gi) => { const arr=[...data.affaireGroups]; arr[gi].expenses.push({date:weekDates[arr[gi].expenses.length%7].fullDate, objet:"", description:"", euros:""}); setData({...data,affaireGroups:arr}); };
   const delExp = (gi,ei) => { const arr=[...data.affaireGroups]; arr[gi].expenses=arr[gi].expenses.filter((_,i)=>i!==ei); setData({...data,affaireGroups:arr}); };
 
-  const addFile = (e) => Array.from(e.target.files).forEach(f=>{
-    const r=new FileReader(); r.onload=ev=>setData(p=>({...p,receipts:[...p.receipts,{name:f.name,size:(f.size/1024).toFixed(2)+" KB",date:new Date().toLocaleDateString("fr-FR"),dataUrl:ev.target.result,type:f.type}]})); r.readAsDataURL(f);
+  // Utilitaire de compression image
+const compressImage = (file, maxWidth = 1200, quality = 0.7) => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      if (!file.type.startsWith("image/")) {
+        // Pour les PDF, pas de compression possible, on garde tel quel
+        resolve(ev.target.result);
+        return;
+      }
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let w = img.width, h = img.height;
+        if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+        canvas.width = w; canvas.height = h;
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
   });
-  const addPhoto = (e) => Array.from(e.target.files).forEach(f=>{
-    const r=new FileReader(); r.onload=ev=>setData(p=>({...p,receipts:[...p.receipts,{name:"Photo_"+Date.now()+".jpg",size:(f.size/1024).toFixed(2)+" KB",date:new Date().toLocaleDateString("fr-FR"),dataUrl:ev.target.result,type:"image/jpeg"}]})); r.readAsDataURL(f);
+};
+
+const addFile = (e) => {
+  Array.from(e.target.files).forEach(async (f) => {
+    const dataUrl = await compressImage(f);
+    const size = Math.round(dataUrl.length * 0.75 / 1024);
+    setData(p => ({
+      ...p,
+      receipts: [...p.receipts, {
+        name: f.name,
+        size: size + " KB (compressé)",
+        date: new Date().toLocaleDateString("fr-FR"),
+        dataUrl,
+        type: f.type.startsWith("image/") ? "image/jpeg" : f.type
+      }]
+    }));
   });
+};
+
+const addPhoto = (e) => {
+  Array.from(e.target.files).forEach(async (f) => {
+    const dataUrl = await compressImage(f);
+    const size = Math.round(dataUrl.length * 0.75 / 1024);
+    setData(p => ({
+      ...p,
+      receipts: [...p.receipts, {
+        name: "Photo_" + Date.now() + ".jpg",
+        size: size + " KB (compressé)",
+        date: new Date().toLocaleDateString("fr-FR"),
+        dataUrl,
+        type: "image/jpeg"
+      }]
+    }));
+  });
+};
 
   const sendByEmail = (contact) => {
     const t = getTotals();
