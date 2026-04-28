@@ -417,6 +417,23 @@ const addPhoto = async (e) => {
         {tab==="factures" && (
           <div className="space-y-4">
             <div className="flex gap-2">
+              <div className="grid grid-cols-2 gap-4 mt-4">
+  {data.receipts?.map((r, i) => {
+    const publicUrl = supabase.storage
+      .from("receipts")
+      .getPublicUrl(r.url).data.publicUrl;
+
+    return (
+      <img
+        key={i}
+        src={publicUrl}
+        alt={r.name}
+        className="w-full rounded-lg border shadow-sm"
+      />
+    );
+  })}
+</div>
+
               <label className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 text-white py-3 rounded-lg cursor-pointer"><FileText className="w-5 h-5"/>Fichiers<input type="file" multiple accept="image/*,application/pdf" onChange={addFile} className="hidden"/></label>
               <label className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white py-3 rounded-lg cursor-pointer"><Camera className="w-5 h-5"/>Photo<input type="file" accept="image/*" capture="environment" onChange={addPhoto} className="hidden"/></label>
             </div>
