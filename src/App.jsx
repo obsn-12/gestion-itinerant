@@ -200,38 +200,65 @@ const compressImage = (file, maxWidth = 1200, quality = 0.7) => {
   });
 };
 
-const addFile = (e) => {
-  Array.from(e.target.files).forEach(async (f) => {
+const addFile = async (e) => {
+  for (const f of e.target.files) {
     const dataUrl = await compressImage(f);
-    const size = Math.round(dataUrl.length * 0.75 / 1024);
+    const fileName = `${USER_ID}/${Date.now()}-${f.name}`;
+
+    // Upload dans Supabase Storage
+    const { error } = await supabase.storage
+      .from("receipts")
+      .upload(fileName, dataUrl.split(",")[1], {
+        contentType: "image/jpeg",
+        upsert: true
+      });
+
+    if (error) {
+      alert("Erreur upload : " + error.message);
+      return;
+    }
+
     setData(p => ({
       ...p,
       receipts: [...p.receipts, {
         name: f.name,
-        size: size + " KB (compressé)",
-        date: new Date().toLocaleDateString("fr-FR"),
-        dataUrl,
-        type: f.type.startsWith("image/") ? "image/jpeg" : f.type
+        url: fileName,
+        date: new Date().toLocaleDateString("fr-FR")
       }]
     }));
-  });
+  }
 };
 
-const addPhoto = (e) => {
-  Array.from(e.target.files).forEach(async (f) => {
+};
+
+const addPhoto = async (e) => {
+  for (const f of e.target.files) {
     const dataUrl = await compressImage(f);
-    const size = Math.round(dataUrl.length * 0.75 / 1024);
+    const fileName = `${USER_ID}/${Date.now()}-photo.jpg`;
+
+    const { error } = await supabase.storage
+      .from("receipts")
+      .upload(fileName, dataUrl.split(",")[1], {
+        contentType: "image/jpeg",
+        upsert: true
+      });
+
+    if (error) {
+      alert("Erreur upload : " + error.message);
+      return;
+    }
+
     setData(p => ({
       ...p,
       receipts: [...p.receipts, {
-        name: "Photo_" + Date.now() + ".jpg",
-        size: size + " KB (compressé)",
-        date: new Date().toLocaleDateString("fr-FR"),
-        dataUrl,
-        type: "image/jpeg"
+        name: fileName,
+        url: fileName,
+        date: new Date().toLocaleDateString("fr-FR")
       }]
     }));
-  });
+  }
+};
+
 };
 
   const sendByEmail = (contact) => {
