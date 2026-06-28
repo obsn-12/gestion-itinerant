@@ -259,7 +259,6 @@ const addPhoto = async (e) => {
   }
 };
 
-};
 
   const sendByEmail = (contact) => {
     const t = getTotals();
