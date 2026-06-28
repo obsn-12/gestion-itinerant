@@ -98,42 +98,40 @@ export default function App() {
   const prevWeek = () => week>1 ? changeWeek(week-1,year) : changeWeek(52,year-1);
   const nextWeek = () => week<52 ? changeWeek(week+1,year) : changeWeek(1,year+1);
 
-const saveWeek = async () => {
-  setSaving(true);
-  const id = USER_ID + "-" + year + "-W" + week;
-  // Nettoyage du JSON avant sauvegarde (évite les timeouts)
-if (data.receipts && data.receipts.length > 0) {
-  data.receipts = data.receipts.map(r =>
-    typeof r === "string" ? r : r.name || r.url
-  );
-}
+  const saveWeek = async () => {
+    setSaving(true);
+    const id = USER_ID + "-" + year + "-W" + week;
+    
+    // Nettoyage du JSON avant sauvegarde
+    if (data.receipts && data.receipts.length > 0) {
+      data.receipts = data.receipts.map(r =>
+        typeof r === "string" ? r : r.name || r.url
+      );
+    }
 
-  // Sauvegarder les données sans les images (trop lourdes)
-  const dataWithoutReceipts = { ...data, receipts: [] };
+    const dataWithoutReceipts = { ...data, receipts: [] };
+    const receiptsId = id + "-receipts";
 
-  // Sauvegarder les factures séparément
-  const receiptsId = id + "-receipts";
+    const [weekRes, receiptRes] = await Promise.all([
+      supabase.from("weeks").upsert({
+        id,
+        user_id: USER_ID,
+        data: dataWithoutReceipts,
+        updated_at: new Date().toISOString()
+      }),
+      supabase.from("weeks").upsert({
+        id: receiptsId,
+        user_id: USER_ID,
+        data: { receipts: data.receipts },
+        updated_at: new Date().toISOString()
+      })
+    ]);
 
-  const [weekRes, receiptRes] = await Promise.all([
-    supabase.from("weeks").upsert({
-      id,
-      user_id: USER_ID,
-      data: dataWithoutReceipts,
-      updated_at: new Date().toISOString()
-    }),
-    supabase.from("weeks").upsert({
-      id: receiptsId,
-      user_id: USER_ID,
-      data: { receipts: data.receipts },
-      updated_at: new Date().toISOString()
-    })
-  ]);
+    setSaving(false);
 
-  setSaving(false);
-
-  if (weekRes.error) alert("Erreur sauvegarde : " + weekRes.error.message);
-  else if (receiptRes.error) alert("Données sauvegardées mais erreur factures : " + receiptRes.error.message);
-  else alert("Semaine S" + week + "/" + year + " sauvegardée !");
+    if (weekRes.error) alert("Erreur sauvegarde : " + weekRes.error.message);
+    else if (receiptRes.error) alert("Données sauvegardées mais erreur factures : " + receiptRes.error.message);
+    else alert("Semaine S" + week + "/" + year + " sauvegardée !");
   };
 
   const dupDay = (idx) => {
@@ -141,11 +139,13 @@ if (data.receipts && data.receipts.length > 0) {
     arr.splice(idx+1, 0, {...data.timeEntries[idx], affaire:"", description:"", voyage:0, surSite:0});
     setData({...data, timeEntries:arr});
   };
+
   const addDay = () => {
     const used = new Set(data.timeEntries.map(e=>e.dayIndex));
     const next = weekDates.slice(0,5).find(d=>!used.has(d.dayIndex)) || weekDates[0];
     setData({...data, timeEntries:[...data.timeEntries, mkEntry(next)]});
   };
+
   const updEntry = (idx, field, val) => {
     const arr = [...data.timeEntries];
     if (field==="dayIndex") {
@@ -154,110 +154,110 @@ if (data.receipts && data.receipts.length > 0) {
     } else arr[idx] = {...arr[idx], [field]:val};
     setData({...data, timeEntries:arr});
   };
+
   const delEntry = (idx) => setData({...data, timeEntries:data.timeEntries.filter((_,i)=>i!==idx)});
 
   const grpTotal = (g) => g.expenses.reduce((s,e)=>s+(parseFloat(e.euros)||0),0);
+  
   const getTotals = () => {
     const tv = data.timeEntries.reduce((s,e)=>s+(parseFloat(e.voyage)||0),0);
     const ts = data.timeEntries.reduce((s,e)=>s+(parseFloat(e.surSite)||0),0);
     return {tv, ts, tot:tv+ts};
   };
+
   const getExpTotal = () => data.affaireGroups.reduce((s,g)=>s+grpTotal(g),0);
 
   const addGroup = () => setData({...data, affaireGroups:[...data.affaireGroups, {
     numDeplacement:"", typeAppareil:"", client:"", villePays:"",
     expenses: weekDates.map(d=>({date:d.fullDate, objet:"", description:"", euros:""}))
   }]});
+
   const updGroup = (gi,f,v) => { const arr=[...data.affaireGroups]; arr[gi]={...arr[gi],[f]:v}; setData({...data,affaireGroups:arr}); };
   const delGroup = (gi) => setData({...data, affaireGroups:data.affaireGroups.filter((_,i)=>i!==gi)});
   const updExp = (gi,ei,f,v) => { const arr=JSON.parse(JSON.stringify(data.affaireGroups)); arr[gi].expenses[ei][f]=v; setData({...data,affaireGroups:arr}); };
   const addExp = (gi) => { const arr=[...data.affaireGroups]; arr[gi].expenses.push({date:weekDates[arr[gi].expenses.length%7].fullDate, objet:"", description:"", euros:""}); setData({...data,affaireGroups:arr}); };
   const delExp = (gi,ei) => { const arr=[...data.affaireGroups]; arr[gi].expenses=arr[gi].expenses.filter((_,i)=>i!==ei); setData({...data,affaireGroups:arr}); };
 
-  // Utilitaire de compression image
-const compressImage = (file, maxWidth = 1200, quality = 0.7) => {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      if (!file.type.startsWith("image/")) {
-        // Pour les PDF, pas de compression possible, on garde tel quel
-        resolve(ev.target.result);
+  const compressImage = (file, maxWidth = 1200, quality = 0.7) => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        if (!file.type.startsWith("image/")) {
+          resolve(ev.target.result);
+          return;
+        }
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement("canvas");
+          let w = img.width, h = img.height;
+          if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
+          canvas.width = w; canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/jpeg", quality));
+        };
+        img.src = ev.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const addFile = async (e) => {
+    for (const f of e.target.files) {
+      const dataUrl = await compressImage(f);
+      const fileName = `${USER_ID}/${Date.now()}-${f.name}`;
+
+      const { error } = await supabase.storage
+        .from("receipts")
+        .upload(fileName, dataUrl.split(",")[1], {
+          contentType: "image/jpeg",
+          upsert: true
+        });
+
+      if (error) {
+        alert("Erreur upload : " + error.message);
         return;
       }
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        let w = img.width, h = img.height;
-        if (w > maxWidth) { h = Math.round(h * maxWidth / w); w = maxWidth; }
-        canvas.width = w; canvas.height = h;
-        const ctx = canvas.getContext("2d");
-        ctx.drawImage(img, 0, 0, w, h);
-        resolve(canvas.toDataURL("image/jpeg", quality));
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-};
 
-const addFile = async (e) => {
-  for (const f of e.target.files) {
-    const dataUrl = await compressImage(f);
-    const fileName = `${USER_ID}/${Date.now()}-${f.name}`;
-
-    // Upload dans Supabase Storage
-    const { error } = await supabase.storage
-      .from("receipts")
-      .upload(fileName, dataUrl.split(",")[1], {
-        contentType: "image/jpeg",
-        upsert: true
-      });
-
-    if (error) {
-      alert("Erreur upload : " + error.message);
-      return;
+      setData(p => ({
+        ...p,
+        receipts: [...p.receipts, {
+          name: f.name,
+          url: fileName,
+          date: new Date().toLocaleDateString("fr-FR")
+        }]
+      }));
     }
+  };
 
-    setData(p => ({
-      ...p,
-      receipts: [...p.receipts, {
-        name: f.name,
-        url: fileName,
-        date: new Date().toLocaleDateString("fr-FR")
-      }]
-    }));
-  }
-};
+  const addPhoto = async (e) => {
+    for (const f of e.target.files) {
+      const dataUrl = await compressImage(f);
+      const fileName = `${USER_ID}/${Date.now()}-photo.jpg`;
 
-};
+      const { error } = await supabase.storage
+        .from("receipts")
+        .upload(fileName, dataUrl.split(",")[1], {
+          contentType: "image/jpeg",
+          upsert: true
+        });
 
-const addPhoto = async (e) => {
-  for (const f of e.target.files) {
-    const dataUrl = await compressImage(f);
-    const fileName = `${USER_ID}/${Date.now()}-photo.jpg`;
+      if (error) {
+        alert("Erreur upload : " + error.message);
+        return;
+      }
 
-    const { error } = await supabase.storage
-      .from("receipts")
-      .upload(fileName, dataUrl.split(",")[1], {
-        contentType: "image/jpeg",
-        upsert: true
-      });
-
-    if (error) {
-      alert("Erreur upload : " + error.message);
-      return;
+      setData(p => ({
+        ...p,
+        receipts: [...p.receipts, {
+          name: fileName,
+          url: fileName,
+          date: new Date().toLocaleDateString("fr-FR")
+        }]
+      }));
     }
+  };
 
-    setData(p => ({
-      ...p,
-      receipts: [...p.receipts, {
-        name: fileName,
-        url: fileName,
-        date: new Date().toLocaleDateString("fr-FR")
-      }]
-    }));
-  }
-};
   const sendByEmail = (contact) => {
     const t = getTotals();
     const subject = "Rapport Semaine S"+week+" "+year+" - "+emp.prenom+" "+emp.nom;
@@ -298,7 +298,7 @@ const addPhoto = async (e) => {
       data.affaireGroups.forEach(g=>{ h += "<div class=aff><table style='border:1px solid #ccc;font-size:10px;margin-bottom:8px'>"; [["N DEPLACEMENT",g.numDeplacement],["TYPE APPAREIL",g.typeAppareil],["CLIENT",g.client],["VILLE/PAYS",g.villePays]].forEach(([l,v])=>{ h += "<tr><td style='font-weight:bold;border:1px solid #ccc;padding:4px;width:40%'>"+l+"</td><td style='border:1px solid #ccc;padding:4px'>"+(v||"-")+"</td></tr>"; }); h += "</table><table><thead><tr><th>Date</th><th>Objet</th><th style='text-align:right'>EUR</th></tr></thead><tbody>"; g.expenses.forEach(ex=>{ h += "<tr><td>"+ex.date+"</td><td>"+(ex.objet||"-")+(ex.description?" - "+ex.description:"")+"</td><td style='text-align:right'>"+parseFloat(ex.euros||0).toFixed(2)+"</td></tr>"; }); h += "<tr class=tr><td colspan=2 style='text-align:right'>TOTAL AFFAIRE</td><td style='text-align:right'>"+grpTotal(g).toFixed(2)+" EUR</td></tr></tbody></table></div>"; });
       h += "<table><tr class=gt><td colspan=2 style='padding:10px;text-align:right'>TOTAL A REMBOURSER</td><td style='padding:10px;text-align:right'>"+et.toFixed(2)+" EUR</td></tr></table>";
     }
-    if(data.receipts.length>0){ h += "<h2>Factures</h2>"; data.receipts.forEach((r,i)=>{ h += "<div style='margin:12px 0;padding:10px;background:#F9FAFB;border-radius:5px'><p style='font-weight:bold;margin:0 0 6px'>"+(i+1)+". "+r.name+"</p><p style='font-size:10px;color:#666;margin:0 0 6px'>"+r.size+" | "+r.date+"</p>"; if(r.type.startsWith("image/")) h += "<img src='"+r.dataUrl+"' style='max-width:100%;border:1px solid #ddd;border-radius:4px'>"; h += "</div>"; }); }
+    if(data.receipts.length>0){ h += "<h2>Factures</h2>"; data.receipts.forEach((r,i)=>{ h += "<div style='margin:12px 0;padding:10px;background:#F9FAFB;border-radius:5px'><p style='font-weight:bold;margin:0 0 6px'>"+(i+1)+". "+r.name+"</p><p style='font-size:10px;color:#666;margin:0 0 6px'>"+r.size+" | "+r.date+"</p>"; if(r.type && r.type.startsWith("image/")) h += "<img src='"+r.dataUrl+"' style='max-width:100%;border:1px solid #ddd;border-radius:4px'>"; h += "</div>"; }); }
     h += "<div class=sig><p style='font-weight:bold;text-align:center;margin:0 0 8px'>Signature employe</p><div class=sl></div><p style='text-align:center'><b>"+emp.prenom+" "+emp.nom+"</b></p></div>";
     h += "<div class=sig><p style='font-weight:bold;text-align:center;margin:0 0 8px'>Signature responsable</p><div class=sl></div><p style='text-align:center'>_______________________</p></div>";
     h += "<p style='text-align:center;color:#999;font-size:10px;margin-top:20px;border-top:1px solid #ddd;padding-top:16px'>Gestion Itinerant | "+emp.entreprise+"</p></body></html>";
@@ -348,7 +348,7 @@ const addPhoto = async (e) => {
       </div>
 
       <div className="bg-white border-b sticky top-28 z-20 flex">
-        {[["temps","Temps",<Clock className="inline w-4 h-4 mr-1"/>],["frais","Frais",<Euro className="inline w-4 h-4 mr-1"/>],["factures","Factures ("+data.receipts.length+")",<FileText className="inline w-4 h-4 mr-1"/>]].map(([id,label,icon])=>(
+        {[["temps","Temps",<Clock key="t" className="inline w-4 h-4 mr-1"/>],["frais","Frais",<Euro key="e" className="inline w-4 h-4 mr-1"/>],["factures","Factures ("+data.receipts.length+")",<FileText key="f" className="inline w-4 h-4 mr-1"/>]].map(([id,label,icon])=>(
           <button key={id} onClick={()=>setTab(id)} className={"flex-1 px-2 py-3 font-medium text-sm "+(tab===id?"border-b-2 border-indigo-600 text-indigo-600 bg-indigo-50":"text-gray-600")}>{icon}{label}</button>
         ))}
       </div>
@@ -415,27 +415,27 @@ const addPhoto = async (e) => {
           <div className="space-y-4">
             <div className="flex gap-2">
               <div className="grid grid-cols-2 gap-4 mt-4">
-  {data.receipts?.map((r, i) => {
-    const publicUrl = supabase.storage
-      .from("receipts")
-      .getPublicUrl(r).data.publicUrl;
+                {data.receipts?.map((r, i) => {
+                  const publicUrl = supabase.storage
+                    .from("receipts")
+                    .getPublicUrl(typeof r === "string" ? r : r.url).data.publicUrl;
 
-    return (
-      <img
-        key={i}
-        src={publicUrl}
-        alt={r}
-        className="w-full rounded-lg border shadow-sm"
-      />
-    );
-  })}
-</div>
+                  return (
+                    <img
+                      key={i}
+                      src={publicUrl}
+                      alt={typeof r === "string" ? r : r.name}
+                      className="w-full rounded-lg border shadow-sm"
+                    />
+                  );
+                })}
+              </div>
 
               <label className="flex-1 flex items-center justify-center gap-2 bg-indigo-600 text-white py-3 rounded-lg cursor-pointer"><FileText className="w-5 h-5"/>Fichiers<input type="file" multiple accept="image/*,application/pdf" onChange={addFile} className="hidden"/></label>
               <label className="flex-1 flex items-center justify-center gap-2 bg-green-600 text-white py-3 rounded-lg cursor-pointer"><Camera className="w-5 h-5"/>Photo<input type="file" accept="image/*" capture="environment" onChange={addPhoto} className="hidden"/></label>
             </div>
             {data.receipts.length===0?(<div className="text-center py-12 bg-white rounded-lg shadow"><FileText className="w-16 h-16 mx-auto mb-4 text-indigo-300"/><p className="font-bold text-gray-600">Aucune facture</p></div>):(
-              <div className="space-y-3">{data.receipts.map((r,i)=>(<div key={i} className="bg-white rounded-lg shadow p-3"><div className="flex justify-between mb-2"><div><div className="font-bold text-sm">{r.name}</div><div className="text-xs text-gray-500">{r.size} | {r.date}</div></div><button onClick={()=>setData({...data,receipts:data.receipts.filter((_,j)=>j!==i)})} className="text-red-600"><Trash2 className="w-5 h-5"/></button></div>{r.type.startsWith("image/")&&<img src={r.dataUrl} className="w-full rounded border"/>}</div>))}</div>
+              <div className="space-y-3">{data.receipts.map((r,i)=>(<div key={i} className="bg-white rounded-lg shadow p-3"><div className="flex justify-between mb-2"><div><div className="font-bold text-sm">{r.name}</div><div className="text-xs text-gray-500">{r.size} | {r.date}</div></div><button onClick={()=>setData({...data,receipts:data.receipts.filter((_,j)=>j!==i)})} className="text-red-600"><Trash2 className="w-5 h-5"/></button></div>{r.type && r.type.startsWith("image/")&&<img src={r.dataUrl} className="w-full rounded border"/>}</div>))}</div>
             )}
           </div>
         )}
@@ -456,52 +456,9 @@ const addPhoto = async (e) => {
             <div className="flex items-center justify-between mb-4"><h2 className="font-bold text-lg">Envoyer S{week}/{year}</h2><button onClick={()=>setShowSendModal(false)}><X className="w-6 h-6"/></button></div>
             <div className="space-y-2 mb-5">
               {contacts.length===0&&<p className="text-gray-400 text-sm text-center py-4">Aucun contact</p>}
-              {contacts.map((c,i)=>(<div key={i} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-3"><div className="flex-1"><div className="font-bold text-sm">{c.nom}</div><div className="text-xs text-gray-500">{c.email}</div></div><button onClick={()=>sendByEmail(c)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold">Envoyer</button><button onClick={()=>setContacts(contacts.filter((_,j)=>j!==i))} className="text-red-400"><Trash2 className="w-4 h-4"/></button></div>))}
-            </div>
-            <div className="border-t pt-4">
-              <div className="text-xs font-bold text-gray-500 mb-2 uppercase">Ajouter un contact</div>
-              <div className="flex gap-2 mb-2">
-                <input type="text" value={newContact.nom} onChange={e=>setNewContact({...newContact,nom:e.target.value})} placeholder="Nom" className="flex-1 px-3 py-2 border rounded-lg text-sm"/>
-                <input type="email" value={newContact.email} onChange={e=>setNewContact({...newContact,email:e.target.value})} placeholder="Email" className="flex-1 px-3 py-2 border rounded-lg text-sm"/>
-              </div>
-              <button onClick={()=>{ if(newContact.nom&&newContact.email){ setContacts([...contacts,newContact]); setNewContact({nom:"",email:""}); }}} className="w-full flex items-center justify-center gap-2 bg-green-600 text-white py-2 rounded-lg text-sm font-bold"><Plus className="w-4 h-4"/>Ajouter</button>
+              {contacts.map((c,i)=>(<div key={i} className="flex items-center gap-3 bg-gray-50 rounded-xl px-3 py-3"><div className="flex-1"><div className="font-bold text-sm">{c.nom}</div><div className="text-xs text-gray-500">{c.email}</div></div><button onClick={()=>sendByEmail(c)} className="bg-indigo-600 text-white px-4 py-2 rounded-lg text-sm font-bold">Envoyer</button><button onClick={()=>setContacts(contacts.filter((_,j)=>j!==i))} className="text-red-500"><Trash2 className="w-4 h-4"/></button></div>))}
             </div>
           </div>
-        </div>
-      )}
-
-      {showDashboard && (
-        <div className="fixed inset-0 z-50 bg-gray-50 flex flex-col">
-          <div className="bg-indigo-600 text-white px-4 py-3 flex items-center justify-between">
-            <span className="font-bold text-lg">Resume general</span>
-            <button onClick={()=>setShowDashboard(false)}><X className="w-6 h-6"/></button>
-          </div>
-          <div className="grid grid-cols-2 gap-3 p-4">
-            <div className="bg-indigo-600 text-white rounded-xl p-4 text-center">
-              <div className="text-xs opacity-80 mb-1">Total heures</div>
-              <div className="text-2xl font-bold">{allWeeksSummary.reduce((s,w)=>s+w.tot,0).toFixed(1)}h</div>
-              <div className="text-xs opacity-70">{allWeeksSummary.length} semaine{allWeeksSummary.length>1?"s":""}</div>
-            </div>
-            <div className="bg-green-600 text-white rounded-xl p-4 text-center">
-              <div className="text-xs opacity-80 mb-1">Total frais</div>
-              <div className="text-2xl font-bold">{allWeeksSummary.reduce((s,w)=>s+w.euros,0).toFixed(0)} EUR</div>
-            </div>
-          </div>
-          <div className="flex-1 overflow-auto px-4 pb-6">
-            {allWeeksSummary.length===0?(<div className="text-center py-16 text-gray-400"><Clock className="w-16 h-16 mx-auto mb-4 opacity-30"/><p className="font-bold">Aucune donnee sauvegardee</p></div>):(
-              <div className="space-y-3">{allWeeksSummary.map(s=>(<div key={s.key} className="bg-white rounded-xl shadow p-4"><div className="flex items-center justify-between mb-3"><div><span className="font-bold text-indigo-700">S{s.wn} - {s.yr}</span>{s.key===USER_ID+"-"+year+"-W"+week&&<span className="ml-2 text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full">Actuelle</span>}</div><button onClick={()=>{ setShowDashboard(false); changeWeek(s.wn,s.yr); }} className="text-xs bg-indigo-100 text-indigo-600 px-3 py-1 rounded-full font-medium">Ouvrir</button></div><div className="grid grid-cols-3 gap-2 mb-3"><div className="bg-blue-50 rounded-lg p-2 text-center"><div className="text-xs text-gray-500">Voyage</div><div className="font-bold text-blue-700">{s.tv.toFixed(1)}h</div></div><div className="bg-indigo-50 rounded-lg p-2 text-center"><div className="text-xs text-gray-500">Sur site</div><div className="font-bold text-indigo-700">{s.ts.toFixed(1)}h</div></div><div className="bg-purple-50 rounded-lg p-2 text-center"><div className="text-xs text-gray-500">Total</div><div className="font-bold text-purple-700">{s.tot.toFixed(1)}h</div></div></div>{s.euros>0&&<div className="bg-green-50 rounded-lg px-3 py-2 flex justify-between items-center mb-2"><span className="text-xs text-gray-500">Frais</span><span className="font-bold text-green-700">{s.euros.toFixed(2)} EUR</span></div>}{s.affaires.length>0&&<div className="flex flex-wrap gap-1">{s.affaires.map(a=>(<span key={a} className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">{a}</span>))}</div>}</div>))}</div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {showReport && (
-        <div className="fixed inset-0 z-50 bg-white flex flex-col">
-          <div className="flex items-center justify-between bg-indigo-600 text-white px-4 py-3">
-            <span className="font-bold">Rapport S{week}/{year}</span>
-            <button onClick={()=>setShowReport(false)}><X className="w-6 h-6"/></button>
-          </div>
-          <iframe srcDoc={reportHTML} className="flex-1 w-full border-0" title="Rapport"/>
         </div>
       )}
     </div>
