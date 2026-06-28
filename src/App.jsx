@@ -258,8 +258,6 @@ const addPhoto = async (e) => {
     }));
   }
 };
-
-
   const sendByEmail = (contact) => {
     const t = getTotals();
     const subject = "Rapport Semaine S"+week+" "+year+" - "+emp.prenom+" "+emp.nom;
