@@ -421,13 +421,13 @@ const addPhoto = async (e) => {
   {data.receipts?.map((r, i) => {
     const publicUrl = supabase.storage
       .from("receipts")
-      .getPublicUrl(r.url).data.publicUrl;
+      .getPublicUrl(r).data.publicUrl;
 
     return (
       <img
         key={i}
         src={publicUrl}
-        alt={r.name}
+        alt={r}
         className="w-full rounded-lg border shadow-sm"
       />
     );
