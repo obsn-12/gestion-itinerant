@@ -102,7 +102,6 @@ export default function App() {
     setSaving(true);
     const id = USER_ID + "-" + year + "-W" + week;
     
-    // Nettoyage du JSON avant sauvegarde
     if (data.receipts && data.receipts.length > 0) {
       data.receipts = data.receipts.map(r =>
         typeof r === "string" ? r : r.name || r.url
